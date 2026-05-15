@@ -11,5 +11,6 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/7yvta/miine/main/load
 What I fixed:
 - `loader.lua` now retries multiple URLs.
 - `loader.lua` validates fetch + compile before running.
+- `loader.lua` forces common language vars to English before start.
 
 Note: `miine.lua` is obfuscated/protected upstream source, so deeper in-script bug fixes require unobfuscated source.
