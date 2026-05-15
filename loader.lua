@@ -170,56 +170,6 @@ local function translateSourceContent(source)
     return patched
 end
 
-local function installPropertyHook()
-    local ok = false
-    pcall(function()
-        if type(hookmetamethod) ~= "function" or type(newcclosure) ~= "function" then
-            return
-        end
-
-        local previous
-        previous = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
-            if type(key) == "string" and type(value) == "string" then
-                local lowered = key:lower()
-                if lowered == "text" or lowered == "placeholdertext" then
-                    value = translateText(value)
-                end
-            end
-            return previous(self, key, value)
-        end))
-        ok = true
-    end)
-    return ok
-end
-
-local function installInstanceHook()
-    local ok = false
-    pcall(function()
-        if type(hookfunction) ~= "function" then
-            return
-        end
-
-        local previousNew
-        previousNew = hookfunction(Instance.new, function(className, ...)
-            local instance = previousNew(className, ...)
-            pcall(function()
-                if instance and (instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox")) then
-                    if type(instance.Text) == "string" then
-                        instance.Text = translateText(instance.Text)
-                    end
-                    if type(instance.PlaceholderText) == "string" then
-                        instance.PlaceholderText = translateText(instance.PlaceholderText)
-                    end
-                end
-            end)
-            return instance
-        end)
-
-        ok = true
-    end)
-    return ok
-end
-
 local function patchVisibleUi()
     local function patchObjectText(object)
         if not object then
@@ -242,38 +192,6 @@ local function patchVisibleUi()
                         object.PlaceholderText = updated
                     end
                 end
-            end)
-
-            pcall(function()
-                if object:GetAttribute("YvtaLangHook") then
-                    return
-                end
-                object:SetAttribute("YvtaLangHook", true)
-                object:GetPropertyChangedSignal("Text"):Connect(function()
-                    pcall(function()
-                        local latest = object.Text
-                        local patched = translateText(latest)
-                        if patched ~= latest then
-                            object.Text = patched
-                        end
-                    end)
-                end)
-            end)
-
-            pcall(function()
-                if object:GetAttribute("YvtaPlaceholderHook") then
-                    return
-                end
-                object:SetAttribute("YvtaPlaceholderHook", true)
-                object:GetPropertyChangedSignal("PlaceholderText"):Connect(function()
-                    pcall(function()
-                        local latest = object.PlaceholderText
-                        local patched = translateText(latest)
-                        if patched ~= latest then
-                            object.PlaceholderText = patched
-                        end
-                    end)
-                end)
             end)
         end
     end
@@ -315,15 +233,11 @@ local function patchVisibleUi()
 
     pcall(function()
         local function runner()
-            for i = 1, 80 do
+            for i = 1, 12 do
                 for _, root in ipairs(roots) do
                     patchAllFrom(root)
                 end
-                if i <= 40 then
-                    safeWait(0.25)
-                else
-                    safeWait(1.5)
-                end
+                safeWait(1)
             end
         end
 
@@ -385,6 +299,8 @@ local observationFarm = {
     ToggleButton = nil,
     LastKenPulse = 0,
     KenPulseIndex = 1,
+    CurrentTarget = nil,
+    LastTargetScan = 0,
     OffColor = Color3.fromRGB(128, 56, 56),
     UiBound = false,
 }
@@ -511,6 +427,19 @@ local function findObservationEnemy(originPosition)
     return bestTarget
 end
 
+local function isObservationTargetValid(target, originPosition)
+    if not target or not target.Parent then
+        return false
+    end
+    local humanoid = target:FindFirstChildOfClass("Humanoid")
+    local root = target:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not root or humanoid.Health <= 0 then
+        return false
+    end
+    local distance = (root.Position - originPosition).Magnitude
+    return distance <= 350
+end
+
 local function moveNearEnemy(characterRoot, enemyModel)
     if not characterRoot or not enemyModel then
         return
@@ -564,17 +493,30 @@ local function runObservationFarmLoop()
                 safeWait(0.7)
             else
                 pulseKenOn()
-                local enemy = findObservationEnemy(root.Position)
+                local enemy = observationFarm.CurrentTarget
+                if not isObservationTargetValid(enemy, root.Position) then
+                    enemy = nil
+                end
+
+                local now = os.clock()
+                if not enemy and (now - observationFarm.LastTargetScan >= 1.25) then
+                    observationFarm.LastTargetScan = now
+                    enemy = findObservationEnemy(root.Position)
+                    observationFarm.CurrentTarget = enemy
+                end
+
                 if enemy then
                     setObservationStatus("Farming " .. enemy.Name)
                     moveNearEnemy(root, enemy)
                 else
+                    observationFarm.CurrentTarget = nil
                     setObservationStatus("Searching target")
                 end
-                safeWait(0.35)
+                safeWait(0.55)
             end
         end
         observationFarm.Running = false
+        observationFarm.CurrentTarget = nil
         setObservationStatus("Stopped")
     end
 
@@ -718,11 +660,11 @@ end
 local function watchAndAttachObservationButton()
     pcall(function()
         local function runner()
-            for _ = 1, 120 do
+            for _ = 1, 45 do
                 if attachObservationButtonToMainPanel() then
                     break
                 end
-                safeWait(0.5)
+                safeWait(1)
             end
         end
         if task and type(task.spawn) == "function" then
@@ -756,9 +698,6 @@ if not chunk then
 end
 
 forceEnglish()
-pcall(installPropertyHook)
-pcall(installInstanceHook)
-pcall(patchVisibleUi)
 pcall(removeLegacyObservationPanel)
 chunk()
 pcall(addCreatorTag)
