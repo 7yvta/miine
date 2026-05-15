@@ -1,11 +1,11 @@
-# miine-script
+# miine
 
 This repo contains your renamed script snapshot as `miine.lua`.
 
 Use this loader after push:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/7yvta/miine-script/main/loader.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/7yvta/miine/main/loader.lua"))()
 ```
 
 What I fixed:

@@ -1,6 +1,6 @@
 local sources = {
-    "https://raw.githubusercontent.com/7yvta/miine-script/main/miine.lua",
-    "https://raw.githubusercontent.com/7yvta/miine-script/refs/heads/main/miine.lua",
+    "https://raw.githubusercontent.com/7yvta/miine/main/miine.lua",
+    "https://raw.githubusercontent.com/7yvta/miine/refs/heads/main/miine.lua",
 }
 
 local content
