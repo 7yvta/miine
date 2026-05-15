@@ -50,6 +50,23 @@ local function translateText(input)
         return input
     end
 
+    local function applyBranding(text)
+        local patched = text
+        patched = patched:gsub("real_redz", "7yvta")
+        patched = patched:gsub("real%-redz", "7yvta")
+        patched = patched:gsub("real redz", "7yvta")
+        patched = patched:gsub("Real_Redz", "7yvta")
+        patched = patched:gsub("Real%-Redz", "7yvta")
+        patched = patched:gsub("Real Redz", "7yvta")
+        patched = patched:gsub("redz Hub", "miine")
+        patched = patched:gsub("Redz Hub", "miine")
+        patched = patched:gsub("redz hub", "miine")
+        patched = patched:gsub("REDZ HUB", "MIINE")
+        patched = patched:gsub("by 7yvta", "by 7yvta")
+        return patched
+    end
+
+    input = applyBranding(input)
     local normalized = normalizeAscii(input)
     local exactMap = {
         ["chn cng c"] = "Select Tool",
@@ -83,6 +100,16 @@ local function translateText(input)
         return "Select the tool you want to use"
     end
 
+    if normalized == "redz hub" or normalized == "redz hub by real redz" then
+        return "miine by 7yvta"
+    end
+    if normalized:find("by real redz", 1, true) then
+        return "by 7yvta"
+    end
+    if normalized:find("real redz", 1, true) and normalized:find("by", 1, true) then
+        return "by 7yvta"
+    end
+
     if normalized:find("chn cng c", 1, true) or normalized:find("chon cong cu", 1, true) then
         return "Select Tool"
     end
@@ -106,6 +133,7 @@ local function translateText(input)
     for _, pair in ipairs(simpleReplacements) do
         translated = translated:gsub(pair[1], pair[2])
     end
+    translated = applyBranding(translated)
 
     local lowered = translated:lower()
     if lowered:find("created by", 1, true) or lowered:find("made by", 1, true) or lowered:find("dev by", 1, true) then
@@ -159,6 +187,34 @@ local function installPropertyHook()
             end
             return previous(self, key, value)
         end))
+        ok = true
+    end)
+    return ok
+end
+
+local function installInstanceHook()
+    local ok = false
+    pcall(function()
+        if type(hookfunction) ~= "function" then
+            return
+        end
+
+        local previousNew
+        previousNew = hookfunction(Instance.new, function(className, ...)
+            local instance = previousNew(className, ...)
+            pcall(function()
+                if instance and (instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox")) then
+                    if type(instance.Text) == "string" then
+                        instance.Text = translateText(instance.Text)
+                    end
+                    if type(instance.PlaceholderText) == "string" then
+                        instance.PlaceholderText = translateText(instance.PlaceholderText)
+                    end
+                end
+            end)
+            return instance
+        end)
+
         ok = true
     end)
     return ok
@@ -258,24 +314,23 @@ local function patchVisibleUi()
     end
 
     pcall(function()
+        local function runner()
+            for i = 1, 300 do
+                for _, root in ipairs(roots) do
+                    patchAllFrom(root)
+                end
+                if i <= 120 then
+                    safeWait(0.1)
+                else
+                    safeWait(1)
+                end
+            end
+        end
+
         if task and type(task.spawn) == "function" then
-            task.spawn(function()
-                for _ = 1, 240 do
-                    for _, root in ipairs(roots) do
-                        patchAllFrom(root)
-                    end
-                    safeWait(1)
-                end
-            end)
+            task.spawn(runner)
         else
-            spawn(function()
-                for _ = 1, 240 do
-                    for _, root in ipairs(roots) do
-                        patchAllFrom(root)
-                    end
-                    safeWait(1)
-                end
-            end)
+            spawn(runner)
         end
     end)
 end
@@ -348,6 +403,8 @@ end
 
 forceEnglish()
 pcall(installPropertyHook)
+pcall(installInstanceHook)
+pcall(patchVisibleUi)
 chunk()
 pcall(addCreatorTag)
 pcall(patchVisibleUi)
