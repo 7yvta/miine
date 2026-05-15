@@ -315,14 +315,14 @@ local function patchVisibleUi()
 
     pcall(function()
         local function runner()
-            for i = 1, 300 do
+            for i = 1, 80 do
                 for _, root in ipairs(roots) do
                     patchAllFrom(root)
                 end
-                if i <= 120 then
-                    safeWait(0.1)
+                if i <= 40 then
+                    safeWait(0.25)
                 else
-                    safeWait(1)
+                    safeWait(1.5)
                 end
             end
         end
@@ -383,8 +383,10 @@ local observationFarm = {
     Enabled = false,
     Running = false,
     ToggleButton = nil,
-    StatusLabel = nil,
     LastKenPulse = 0,
+    KenPulseIndex = 1,
+    OffColor = Color3.fromRGB(128, 56, 56),
+    UiBound = false,
 }
 
 local firstSeaTargets = {
@@ -418,9 +420,9 @@ for _, enemyName in ipairs(firstSeaTargets) do
 end
 
 local function setObservationStatus(text)
-    local label = observationFarm.StatusLabel
-    if label and label.Parent then
-        label.Text = "ObsFarm: " .. tostring(text or "Idle")
+    local button = observationFarm.ToggleButton
+    if button and button.Parent and observationFarm.Enabled then
+        button.Text = "AutoObservationFarm: ON"
     end
 end
 
@@ -440,7 +442,7 @@ end
 
 local function pulseKenOn()
     local now = os.clock()
-    if now - observationFarm.LastKenPulse < 0.35 then
+    if now - observationFarm.LastKenPulse < 1.0 then
         return
     end
     observationFarm.LastKenPulse = now
@@ -454,12 +456,13 @@ local function pulseKenOn()
         local unpacker = table.unpack or unpack
         local payloads = {
             {"Ken", "On"},
-            {"Ken", true},
             {"Ken"},
             {"Instinct", "On"},
-            {"Observation", "On"},
         }
-        for _, args in ipairs(payloads) do
+        local index = observationFarm.KenPulseIndex
+        local args = payloads[index]
+        observationFarm.KenPulseIndex = (index % #payloads) + 1
+        if args then
             pcall(function()
                 comm:InvokeServer(unpacker(args))
             end)
@@ -467,10 +470,12 @@ local function pulseKenOn()
     end)
 
     pcall(function()
-        local virtualInput = game:GetService("VirtualInputManager")
-        virtualInput:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-        safeWait(0.03)
-        virtualInput:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        if observationFarm.KenPulseIndex == 1 then
+            local virtualInput = game:GetService("VirtualInputManager")
+            virtualInput:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            safeWait(0.03)
+            virtualInput:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        end
     end)
 end
 
@@ -515,6 +520,11 @@ local function moveNearEnemy(characterRoot, enemyModel)
         return
     end
 
+    local currentDistance = (enemyRoot.Position - characterRoot.Position).Magnitude
+    if currentDistance <= 6 then
+        return
+    end
+
     local anchor = enemyRoot.CFrame
     local targetPosition = anchor.Position + (anchor.LookVector * -3)
     local lookAt = CFrame.new(targetPosition, enemyRoot.Position)
@@ -536,7 +546,7 @@ local function updateObservationButtonVisual()
         button.BackgroundColor3 = Color3.fromRGB(39, 142, 75)
     else
         button.Text = "AutoObservationFarm: OFF"
-        button.BackgroundColor3 = Color3.fromRGB(128, 56, 56)
+        button.BackgroundColor3 = observationFarm.OffColor
     end
 end
 
@@ -551,7 +561,7 @@ local function runObservationFarmLoop()
             local character, humanoid, root = getLocalCharacter()
             if not character or not humanoid or humanoid.Health <= 0 or not root then
                 setObservationStatus("Waiting for character")
-                safeWait(0.5)
+                safeWait(0.7)
             else
                 pulseKenOn()
                 local enemy = findObservationEnemy(root.Position)
@@ -561,7 +571,7 @@ local function runObservationFarmLoop()
                 else
                     setObservationStatus("Searching target")
                 end
-                safeWait(0.15)
+                safeWait(0.35)
             end
         end
         observationFarm.Running = false
@@ -586,82 +596,141 @@ local function setObservationEnabled(value)
     end
 end
 
-local function addObservationFarmPanel()
-    local parentGui
+local function collectGuiRoots()
+    local roots = {}
+    pcall(function()
+        table.insert(roots, game:GetService("CoreGui"))
+    end)
+    pcall(function()
+        table.insert(roots, game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
+    end)
     pcall(function()
         if gethui then
-            parentGui = gethui()
+            table.insert(roots, gethui())
         end
     end)
-    if not parentGui then
-        pcall(function()
-            parentGui = game:GetService("CoreGui")
+    return roots
+end
+
+local function removeLegacyObservationPanel()
+    for _, root in ipairs(collectGuiRoots()) do
+        local legacy = root:FindFirstChild("YvtaObservationFarmPanel")
+        if legacy then
+            pcall(function()
+                legacy:Destroy()
+            end)
+        end
+    end
+end
+
+local function findTemplateButton()
+    local function normalizeKey(input)
+        return tostring(input or ""):lower():gsub("%s+", ""):gsub("[^%w_]", "")
+    end
+
+    local roots = collectGuiRoots()
+    for _, root in ipairs(roots) do
+        for _, node in ipairs(root:GetDescendants()) do
+            if node:IsA("TextButton") then
+                local key = normalizeKey(node.Text)
+                if key:find("autofarmlevel", 1, true) or key:find("autofarmboss", 1, true) then
+                    return node
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function attachObservationButtonToMainPanel()
+    if observationFarm.UiBound and observationFarm.ToggleButton and observationFarm.ToggleButton.Parent then
+        return true
+    end
+
+    local template = findTemplateButton()
+    if not template or not template.Parent then
+        return false
+    end
+
+    local container = template.Parent
+    local existing = container:FindFirstChild("YvtaAutoObservationFarm")
+    local button = existing
+    if not button then
+        button = Instance.new("TextButton")
+        button.Name = "YvtaAutoObservationFarm"
+        button.Size = template.Size
+        button.Font = template.Font
+        button.TextSize = template.TextSize
+        button.TextColor3 = template.TextColor3
+        button.TextStrokeColor3 = template.TextStrokeColor3
+        button.TextStrokeTransparency = template.TextStrokeTransparency
+        button.BackgroundTransparency = template.BackgroundTransparency
+        button.BorderSizePixel = template.BorderSizePixel
+        button.BorderColor3 = template.BorderColor3
+        button.AutoButtonColor = template.AutoButtonColor
+        observationFarm.OffColor = template.BackgroundColor3
+        button.BackgroundColor3 = observationFarm.OffColor
+
+        local hasListLayout = container:FindFirstChildOfClass("UIListLayout") ~= nil
+        if hasListLayout then
+            local maxOrder = 0
+            for _, child in ipairs(container:GetChildren()) do
+                if child:IsA("GuiObject") and child.LayoutOrder > maxOrder then
+                    maxOrder = child.LayoutOrder
+                end
+            end
+            button.LayoutOrder = maxOrder + 1
+        else
+            local maxBottom = 0
+            for _, child in ipairs(container:GetChildren()) do
+                if child:IsA("TextButton") then
+                    local bottom = child.Position.Y.Offset + child.Size.Y.Offset
+                    if bottom > maxBottom then
+                        maxBottom = bottom
+                    end
+                end
+            end
+            button.Position = UDim2.new(template.Position.X.Scale, template.Position.X.Offset, template.Position.Y.Scale, maxBottom + 4)
+
+            if container:IsA("Frame") or container:IsA("ScrollingFrame") then
+                local requiredHeight = button.Position.Y.Offset + button.Size.Y.Offset + 4
+                if container.Size.Y.Offset < requiredHeight then
+                    container.Size = UDim2.new(container.Size.X.Scale, container.Size.X.Offset, container.Size.Y.Scale, requiredHeight)
+                end
+                if container:IsA("ScrollingFrame") and container.CanvasSize.Y.Offset < requiredHeight then
+                    container.CanvasSize = UDim2.new(container.CanvasSize.X.Scale, container.CanvasSize.X.Offset, container.CanvasSize.Y.Scale, requiredHeight)
+                end
+            end
+        end
+
+        button.MouseButton1Click:Connect(function()
+            setObservationEnabled(not observationFarm.Enabled)
         end)
-    end
-    if not parentGui then
-        return
+        button.Parent = container
     end
 
-    if parentGui:FindFirstChild("YvtaObservationFarmPanel") then
-        return
-    end
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "YvtaObservationFarmPanel"
-    screenGui.ResetOnSpawn = false
-    screenGui.IgnoreGuiInset = false
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-    local frame = Instance.new("Frame")
-    frame.Name = "Main"
-    frame.Size = UDim2.new(0, 260, 0, 104)
-    frame.Position = UDim2.new(0, 12, 0, 86)
-    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    frame.BorderSizePixel = 0
-    frame.Parent = screenGui
-
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.BackgroundTransparency = 1
-    title.Size = UDim2.new(1, -12, 0, 24)
-    title.Position = UDim2.new(0, 6, 0, 6)
-    title.Font = Enum.Font.GothamBold
-    title.Text = "7yvta Observation Farm"
-    title.TextSize = 14
-    title.TextColor3 = Color3.fromRGB(235, 235, 235)
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = frame
-
-    local toggleButton = Instance.new("TextButton")
-    toggleButton.Name = "Toggle"
-    toggleButton.Size = UDim2.new(1, -12, 0, 34)
-    toggleButton.Position = UDim2.new(0, 6, 0, 34)
-    toggleButton.Font = Enum.Font.GothamBold
-    toggleButton.TextSize = 14
-    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleButton.BorderSizePixel = 0
-    toggleButton.Parent = frame
-    observationFarm.ToggleButton = toggleButton
-
-    local statusLabel = Instance.new("TextLabel")
-    statusLabel.Name = "Status"
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.Size = UDim2.new(1, -12, 0, 20)
-    statusLabel.Position = UDim2.new(0, 6, 0, 74)
-    statusLabel.Font = Enum.Font.Gotham
-    statusLabel.Text = "ObsFarm: Stopped"
-    statusLabel.TextSize = 12
-    statusLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
-    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    statusLabel.Parent = frame
-    observationFarm.StatusLabel = statusLabel
-
-    toggleButton.MouseButton1Click:Connect(function()
-        setObservationEnabled(not observationFarm.Enabled)
-    end)
-
+    observationFarm.ToggleButton = button
+    observationFarm.UiBound = true
     updateObservationButtonVisual()
-    screenGui.Parent = parentGui
+    return true
+end
+
+local function watchAndAttachObservationButton()
+    pcall(function()
+        local function runner()
+            for _ = 1, 120 do
+                if attachObservationButtonToMainPanel() then
+                    break
+                end
+                safeWait(0.5)
+            end
+        end
+        if task and type(task.spawn) == "function" then
+            task.spawn(runner)
+        else
+            spawn(runner)
+        end
+    end)
 end
 
 local content
@@ -690,7 +759,9 @@ forceEnglish()
 pcall(installPropertyHook)
 pcall(installInstanceHook)
 pcall(patchVisibleUi)
+pcall(removeLegacyObservationPanel)
 chunk()
 pcall(addCreatorTag)
-pcall(addObservationFarmPanel)
+pcall(attachObservationButtonToMainPanel)
+pcall(watchAndAttachObservationButton)
 pcall(patchVisibleUi)
