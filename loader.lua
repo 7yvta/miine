@@ -3,6 +3,13 @@ local sources = {
     "https://raw.githubusercontent.com/7yvta/miine/refs/heads/main/miine.lua",
 }
 
+local function safeWait(seconds)
+    if task and type(task.wait) == "function" then
+        return task.wait(seconds)
+    end
+    return wait(seconds)
+end
+
 local function forceEnglish()
     local ok, env = pcall(function()
         return (getgenv and getgenv()) or _G
@@ -28,29 +35,66 @@ local function forceEnglish()
     end
 end
 
+local function normalizeAscii(input)
+    local normalized = tostring(input or "")
+    normalized = normalized:gsub("[\128-\255]", "")
+    normalized = normalized:gsub("[%p]", " ")
+    normalized = normalized:gsub("%s+", " ")
+    normalized = normalized:gsub("^%s+", "")
+    normalized = normalized:gsub("%s+$", "")
+    return normalized:lower()
+end
+
 local function translateText(input)
     if type(input) ~= "string" or input == "" then
         return input
     end
 
-    local exactTranslations = {
-        ["Chọn Công Cụ"] = "Select Tool",
-        ["Chọn công cụ bạn muốn sử dụng"] = "Select the tool you want to use",
-        ["Chọn công cụ bạn muốn sử dụng."] = "Select the tool you want to use.",
-        ["Chọn Vũ Khí"] = "Select Weapon",
-        ["Chọn Mục Tiêu"] = "Select Target",
-        ["Cài Đặt"] = "Settings",
-        ["Làm mới"] = "Refresh",
-        ["Bật"] = "ON",
-        ["Tắt"] = "OFF",
+    local normalized = normalizeAscii(input)
+    local exactMap = {
+        ["chn cng c"] = "Select Tool",
+        ["chon cong cu"] = "Select Tool",
+        ["chn v kh"] = "Select Weapon",
+        ["chon vu khi"] = "Select Weapon",
+        ["chn mc tiu"] = "Select Target",
+        ["chon muc tieu"] = "Select Target",
+        ["ci t"] = "Settings",
+        ["cai dat"] = "Settings",
+        ["lm mi"] = "Refresh",
+        ["lam moi"] = "Refresh",
+        ["bt"] = "ON",
+        ["bat"] = "ON",
+        ["tt"] = "OFF",
+        ["tat"] = "OFF",
+        ["pilih"] = "Select",
+        ["bahasa"] = "Language",
+        ["misi"] = "Quest",
+        ["mulai"] = "Start",
+        ["berhenti"] = "Stop",
+        ["aktif"] = "ON",
+        ["nonaktif"] = "OFF",
     }
 
-    local translated = exactTranslations[input] or input
-    local replacements = {
-        {"Chọn", "Select"},
-        {"Công Cụ", "Tool"},
-        {"công cụ", "tool"},
-        {"bạn muốn sử dụng", "you want to use"},
+    if exactMap[normalized] then
+        return exactMap[normalized]
+    end
+
+    if normalized:find("bn mun s dng", 1, true) or normalized:find("ban muon su dung", 1, true) then
+        return "Select the tool you want to use"
+    end
+
+    if normalized:find("chn cng c", 1, true) or normalized:find("chon cong cu", 1, true) then
+        return "Select Tool"
+    end
+    if normalized:find("chn v kh", 1, true) or normalized:find("chon vu khi", 1, true) then
+        return "Select Weapon"
+    end
+    if normalized:find("chn mc tiu", 1, true) or normalized:find("chon muc tieu", 1, true) then
+        return "Select Target"
+    end
+
+    local translated = input
+    local simpleReplacements = {
         {"Pilih", "Select"},
         {"Bahasa", "Language"},
         {"Misi", "Quest"},
@@ -59,17 +103,65 @@ local function translateText(input)
         {"Aktif", "ON"},
         {"Nonaktif", "OFF"},
     }
-
-    for _, pair in ipairs(replacements) do
+    for _, pair in ipairs(simpleReplacements) do
         translated = translated:gsub(pair[1], pair[2])
     end
 
     local lowered = translated:lower()
     if lowered:find("created by", 1, true) or lowered:find("made by", 1, true) or lowered:find("dev by", 1, true) then
-        translated = "Created by 7yvta"
+        return "Created by 7yvta"
     end
 
     return translated
+end
+
+local function translateSourceContent(source)
+    if type(source) ~= "string" or source == "" then
+        return source
+    end
+
+    local replacements = {
+        {"Chọn Công Cụ", "Select Tool"},
+        {"Chọn công cụ bạn muốn sử dụng", "Select the tool you want to use"},
+        {"Chọn công cụ bạn muốn sử dụng.", "Select the tool you want to use."},
+        {"Chọn Vũ Khí", "Select Weapon"},
+        {"Chọn Mục Tiêu", "Select Target"},
+        {"Cài Đặt", "Settings"},
+        {"Làm mới", "Refresh"},
+        {"Pilih", "Select"},
+        {"Bahasa", "Language"},
+        {"Misi", "Quest"},
+        {"Mulai", "Start"},
+        {"Berhenti", "Stop"},
+    }
+
+    local patched = source
+    for _, pair in ipairs(replacements) do
+        patched = patched:gsub(pair[1], pair[2])
+    end
+    return patched
+end
+
+local function installPropertyHook()
+    local ok = false
+    pcall(function()
+        if type(hookmetamethod) ~= "function" or type(newcclosure) ~= "function" then
+            return
+        end
+
+        local previous
+        previous = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
+            if type(key) == "string" and type(value) == "string" then
+                local lowered = key:lower()
+                if lowered == "text" or lowered == "placeholdertext" then
+                    value = translateText(value)
+                end
+            end
+            return previous(self, key, value)
+        end))
+        ok = true
+    end)
+    return ok
 end
 
 local function patchVisibleUi()
@@ -85,6 +177,17 @@ local function patchVisibleUi()
                     object.Text = updated
                 end
             end)
+
+            pcall(function()
+                local placeholder = object.PlaceholderText
+                if type(placeholder) == "string" and placeholder ~= "" then
+                    local updated = translateText(placeholder)
+                    if updated ~= placeholder then
+                        object.PlaceholderText = updated
+                    end
+                end
+            end)
+
             pcall(function()
                 if object:GetAttribute("YvtaLangHook") then
                     return
@@ -100,6 +203,22 @@ local function patchVisibleUi()
                     end)
                 end)
             end)
+
+            pcall(function()
+                if object:GetAttribute("YvtaPlaceholderHook") then
+                    return
+                end
+                object:SetAttribute("YvtaPlaceholderHook", true)
+                object:GetPropertyChangedSignal("PlaceholderText"):Connect(function()
+                    pcall(function()
+                        local latest = object.PlaceholderText
+                        local patched = translateText(latest)
+                        if patched ~= latest then
+                            object.PlaceholderText = patched
+                        end
+                    end)
+                end)
+            end)
         end
     end
 
@@ -111,28 +230,54 @@ local function patchVisibleUi()
             patchObjectText(descendant)
         end
         pcall(function()
+            if root:GetAttribute("YvtaDescendantHook") then
+                return
+            end
+            root:SetAttribute("YvtaDescendantHook", true)
             root.DescendantAdded:Connect(function(newDescendant)
                 patchObjectText(newDescendant)
             end)
         end)
     end
 
-    local servicesToScan = {}
+    local roots = {}
     pcall(function()
-        table.insert(servicesToScan, game:GetService("CoreGui"))
+        table.insert(roots, game:GetService("CoreGui"))
     end)
     pcall(function()
-        table.insert(servicesToScan, game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
+        table.insert(roots, game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
     end)
     pcall(function()
         if gethui then
-            table.insert(servicesToScan, gethui())
+            table.insert(roots, gethui())
         end
     end)
 
-    for _, root in ipairs(servicesToScan) do
+    for _, root in ipairs(roots) do
         patchAllFrom(root)
     end
+
+    pcall(function()
+        if task and type(task.spawn) == "function" then
+            task.spawn(function()
+                for _ = 1, 240 do
+                    for _, root in ipairs(roots) do
+                        patchAllFrom(root)
+                    end
+                    safeWait(1)
+                end
+            end)
+        else
+            spawn(function()
+                for _ = 1, 240 do
+                    for _, root in ipairs(roots) do
+                        patchAllFrom(root)
+                    end
+                    safeWait(1)
+                end
+            end)
+        end
+    end)
 end
 
 local function addCreatorTag()
@@ -194,12 +339,15 @@ if not content then
     error("Loader failed: could not fetch miine.lua")
 end
 
+content = translateSourceContent(content)
+
 local chunk, compileErr = loadstring(content)
 if not chunk then
     error("Loader failed: compile error - " .. tostring(compileErr))
 end
 
 forceEnglish()
+pcall(installPropertyHook)
 chunk()
 pcall(addCreatorTag)
 pcall(patchVisibleUi)
