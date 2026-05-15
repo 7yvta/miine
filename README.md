@@ -14,5 +14,6 @@ What I fixed:
 - `loader.lua` forces common language vars to English before start.
 - `loader.lua` force-translates Vietnamese/Indonesian/branding text to English at runtime instantly (new and existing UI).
 - `loader.lua` adds creator tag: `Created by 7yvta`.
+- `loader.lua` adds `AutoObservationFarm` toggle panel (auto-tries Ken ON, moves to first-sea NPC enemies, and farms continuously).
 
 Note: `miine.lua` is obfuscated/protected upstream source, so deeper in-script bug fixes require unobfuscated source.

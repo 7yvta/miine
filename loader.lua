@@ -379,6 +379,291 @@ local function addCreatorTag()
     screenGui.Parent = parentGui
 end
 
+local observationFarm = {
+    Enabled = false,
+    Running = false,
+    ToggleButton = nil,
+    StatusLabel = nil,
+    LastKenPulse = 0,
+}
+
+local firstSeaTargets = {
+    "Bandit",
+    "Monkey",
+    "Gorilla",
+    "Pirate",
+    "Brute",
+    "Desert Bandit",
+    "Desert Officer",
+    "Snow Bandit",
+    "Snowman",
+    "Chief Petty Officer",
+    "Sky Bandit",
+    "Dark Master",
+    "Military Soldier",
+    "Military Spy",
+    "Fishman Warrior",
+    "Fishman Commando",
+    "God's Guard",
+    "Shanda",
+    "Royal Squad",
+    "Royal Soldier",
+    "Galley Pirate",
+    "Galley Captain",
+}
+
+local firstSeaLookup = {}
+for _, enemyName in ipairs(firstSeaTargets) do
+    firstSeaLookup[enemyName] = true
+end
+
+local function setObservationStatus(text)
+    local label = observationFarm.StatusLabel
+    if label and label.Parent then
+        label.Text = "ObsFarm: " .. tostring(text or "Idle")
+    end
+end
+
+local function getLocalCharacter()
+    local player = game:GetService("Players").LocalPlayer
+    if not player then
+        return nil, nil, nil
+    end
+    local character = player.Character or player.CharacterAdded:Wait()
+    if not character then
+        return nil, nil, nil
+    end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local root = character:FindFirstChild("HumanoidRootPart")
+    return character, humanoid, root
+end
+
+local function pulseKenOn()
+    local now = os.clock()
+    if now - observationFarm.LastKenPulse < 0.35 then
+        return
+    end
+    observationFarm.LastKenPulse = now
+
+    pcall(function()
+        local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
+        local comm = remotes and remotes:FindFirstChild("CommF_")
+        if not comm then
+            return
+        end
+        local unpacker = table.unpack or unpack
+        local payloads = {
+            {"Ken", "On"},
+            {"Ken", true},
+            {"Ken"},
+            {"Instinct", "On"},
+            {"Observation", "On"},
+        }
+        for _, args in ipairs(payloads) do
+            pcall(function()
+                comm:InvokeServer(unpacker(args))
+            end)
+        end
+    end)
+
+    pcall(function()
+        local virtualInput = game:GetService("VirtualInputManager")
+        virtualInput:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        safeWait(0.03)
+        virtualInput:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+    end)
+end
+
+local function findObservationEnemy(originPosition)
+    local workspaceRef = game:GetService("Workspace")
+    local enemiesFolder = workspaceRef:FindFirstChild("Enemies")
+    if not enemiesFolder then
+        return nil
+    end
+
+    local restrictToFirstSeaList = game.PlaceId == 2753915549
+    local bestTarget = nil
+    local bestDistance = math.huge
+
+    for _, model in ipairs(enemiesFolder:GetChildren()) do
+        local humanoid = model:FindFirstChildOfClass("Humanoid")
+        local root = model:FindFirstChild("HumanoidRootPart")
+        if humanoid and root and humanoid.Health > 0 then
+            local allowed = true
+            if restrictToFirstSeaList then
+                allowed = firstSeaLookup[model.Name] == true
+            end
+            if allowed then
+                local distance = (root.Position - originPosition).Magnitude
+                if distance < bestDistance then
+                    bestDistance = distance
+                    bestTarget = model
+                end
+            end
+        end
+    end
+
+    return bestTarget
+end
+
+local function moveNearEnemy(characterRoot, enemyModel)
+    if not characterRoot or not enemyModel then
+        return
+    end
+    local enemyRoot = enemyModel:FindFirstChild("HumanoidRootPart")
+    if not enemyRoot then
+        return
+    end
+
+    local anchor = enemyRoot.CFrame
+    local targetPosition = anchor.Position + (anchor.LookVector * -3)
+    local lookAt = CFrame.new(targetPosition, enemyRoot.Position)
+
+    pcall(function()
+        characterRoot.Velocity = Vector3.new(0, 0, 0)
+        characterRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    end)
+    characterRoot.CFrame = lookAt
+end
+
+local function updateObservationButtonVisual()
+    local button = observationFarm.ToggleButton
+    if not button then
+        return
+    end
+    if observationFarm.Enabled then
+        button.Text = "AutoObservationFarm: ON"
+        button.BackgroundColor3 = Color3.fromRGB(39, 142, 75)
+    else
+        button.Text = "AutoObservationFarm: OFF"
+        button.BackgroundColor3 = Color3.fromRGB(128, 56, 56)
+    end
+end
+
+local function runObservationFarmLoop()
+    if observationFarm.Running then
+        return
+    end
+    observationFarm.Running = true
+
+    local runner = function()
+        while observationFarm.Enabled do
+            local character, humanoid, root = getLocalCharacter()
+            if not character or not humanoid or humanoid.Health <= 0 or not root then
+                setObservationStatus("Waiting for character")
+                safeWait(0.5)
+            else
+                pulseKenOn()
+                local enemy = findObservationEnemy(root.Position)
+                if enemy then
+                    setObservationStatus("Farming " .. enemy.Name)
+                    moveNearEnemy(root, enemy)
+                else
+                    setObservationStatus("Searching target")
+                end
+                safeWait(0.15)
+            end
+        end
+        observationFarm.Running = false
+        setObservationStatus("Stopped")
+    end
+
+    if task and type(task.spawn) == "function" then
+        task.spawn(runner)
+    else
+        spawn(runner)
+    end
+end
+
+local function setObservationEnabled(value)
+    observationFarm.Enabled = value == true
+    updateObservationButtonVisual()
+    if observationFarm.Enabled then
+        setObservationStatus("Starting")
+        runObservationFarmLoop()
+    else
+        setObservationStatus("Stopped")
+    end
+end
+
+local function addObservationFarmPanel()
+    local parentGui
+    pcall(function()
+        if gethui then
+            parentGui = gethui()
+        end
+    end)
+    if not parentGui then
+        pcall(function()
+            parentGui = game:GetService("CoreGui")
+        end)
+    end
+    if not parentGui then
+        return
+    end
+
+    if parentGui:FindFirstChild("YvtaObservationFarmPanel") then
+        return
+    end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "YvtaObservationFarmPanel"
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    local frame = Instance.new("Frame")
+    frame.Name = "Main"
+    frame.Size = UDim2.new(0, 260, 0, 104)
+    frame.Position = UDim2.new(0, 12, 0, 86)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    frame.BorderSizePixel = 0
+    frame.Parent = screenGui
+
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.BackgroundTransparency = 1
+    title.Size = UDim2.new(1, -12, 0, 24)
+    title.Position = UDim2.new(0, 6, 0, 6)
+    title.Font = Enum.Font.GothamBold
+    title.Text = "7yvta Observation Farm"
+    title.TextSize = 14
+    title.TextColor3 = Color3.fromRGB(235, 235, 235)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = frame
+
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Name = "Toggle"
+    toggleButton.Size = UDim2.new(1, -12, 0, 34)
+    toggleButton.Position = UDim2.new(0, 6, 0, 34)
+    toggleButton.Font = Enum.Font.GothamBold
+    toggleButton.TextSize = 14
+    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleButton.BorderSizePixel = 0
+    toggleButton.Parent = frame
+    observationFarm.ToggleButton = toggleButton
+
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Name = "Status"
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Size = UDim2.new(1, -12, 0, 20)
+    statusLabel.Position = UDim2.new(0, 6, 0, 74)
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.Text = "ObsFarm: Stopped"
+    statusLabel.TextSize = 12
+    statusLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.Parent = frame
+    observationFarm.StatusLabel = statusLabel
+
+    toggleButton.MouseButton1Click:Connect(function()
+        setObservationEnabled(not observationFarm.Enabled)
+    end)
+
+    updateObservationButtonVisual()
+    screenGui.Parent = parentGui
+end
+
 local content
 for _, url in ipairs(sources) do
     local ok, result = pcall(function()
@@ -407,4 +692,5 @@ pcall(installInstanceHook)
 pcall(patchVisibleUi)
 chunk()
 pcall(addCreatorTag)
+pcall(addObservationFarmPanel)
 pcall(patchVisibleUi)
