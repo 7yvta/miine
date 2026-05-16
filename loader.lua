@@ -35,127 +35,34 @@ local function forceEnglish()
     end
 end
 
-local function normalizeAscii(input)
-    local normalized = tostring(input or "")
-    normalized = normalized:gsub("[\128-\255]", "")
-    normalized = normalized:gsub("[%p]", " ")
-    normalized = normalized:gsub("%s+", " ")
-    normalized = normalized:gsub("^%s+", "")
-    normalized = normalized:gsub("%s+$", "")
-    return normalized:lower()
-end
-
-local function translateText(input)
-    if type(input) ~= "string" or input == "" then
-        return input
-    end
-
-    local function applyBranding(text)
-        local patched = text
-        patched = patched:gsub("real_redz", "7yvta")
-        patched = patched:gsub("real%-redz", "7yvta")
-        patched = patched:gsub("real redz", "7yvta")
-        patched = patched:gsub("Real_Redz", "7yvta")
-        patched = patched:gsub("Real%-Redz", "7yvta")
-        patched = patched:gsub("Real Redz", "7yvta")
-        patched = patched:gsub("redz Hub", "NEXUS")
-        patched = patched:gsub("Redz Hub", "NEXUS")
-        patched = patched:gsub("redz hub", "NEXUS")
-        patched = patched:gsub("REDZ HUB", "NEXUS")
-        patched = patched:gsub("by 7yvta", "by 7yvta")
-        return patched
-    end
-
-    input = applyBranding(input)
-    local normalized = normalizeAscii(input)
-    local exactMap = {
-        ["chn cng c"] = "Select Tool",
-        ["chon cong cu"] = "Select Tool",
-        ["chn v kh"] = "Select Weapon",
-        ["chon vu khi"] = "Select Weapon",
-        ["chn mc tiu"] = "Select Target",
-        ["chon muc tieu"] = "Select Target",
-        ["ci t"] = "Settings",
-        ["cai dat"] = "Settings",
-        ["lm mi"] = "Refresh",
-        ["lam moi"] = "Refresh",
-        ["bt"] = "ON",
-        ["bat"] = "ON",
-        ["tt"] = "OFF",
-        ["tat"] = "OFF",
-        ["pilih"] = "Select",
-        ["bahasa"] = "Language",
-        ["misi"] = "Quest",
-        ["mulai"] = "Start",
-        ["berhenti"] = "Stop",
-        ["aktif"] = "ON",
-        ["nonaktif"] = "OFF",
-    }
-
-    if exactMap[normalized] then
-        return exactMap[normalized]
-    end
-
-    if normalized:find("bn mun s dng", 1, true) or normalized:find("ban muon su dung", 1, true) then
-        return "Select the tool you want to use"
-    end
-
-    if normalized == "redz hub" or normalized == "redz hub by real redz" then
-        return "NEXUS by 7yvta"
-    end
-    if normalized:find("by real redz", 1, true) then
-        return "by 7yvta"
-    end
-    if normalized:find("real redz", 1, true) and normalized:find("by", 1, true) then
-        return "by 7yvta"
-    end
-
-    if normalized:find("chn cng c", 1, true) or normalized:find("chon cong cu", 1, true) then
-        return "Select Tool"
-    end
-    if normalized:find("chn v kh", 1, true) or normalized:find("chon vu khi", 1, true) then
-        return "Select Weapon"
-    end
-    if normalized:find("chn mc tiu", 1, true) or normalized:find("chon muc tieu", 1, true) then
-        return "Select Target"
-    end
-
-    local translated = input
-    local simpleReplacements = {
-        {"Pilih", "Select"},
-        {"Bahasa", "Language"},
-        {"Misi", "Quest"},
-        {"Mulai", "Start"},
-        {"Berhenti", "Stop"},
-        {"Aktif", "ON"},
-        {"Nonaktif", "OFF"},
-    }
-    for _, pair in ipairs(simpleReplacements) do
-        translated = translated:gsub(pair[1], pair[2])
-    end
-    translated = applyBranding(translated)
-
-    local lowered = translated:lower()
-    if lowered:find("created by", 1, true) or lowered:find("made by", 1, true) or lowered:find("dev by", 1, true) then
-        return "Created by 7yvta"
-    end
-
-    return translated
-end
-
-local function translateSourceContent(source)
+local function patchSourceContent(source)
     if type(source) ~= "string" or source == "" then
         return source
     end
 
     local replacements = {
-        {"Chọn Công Cụ", "Select Tool"},
-        {"Chọn công cụ bạn muốn sử dụng", "Select the tool you want to use"},
-        {"Chọn công cụ bạn muốn sử dụng.", "Select the tool you want to use."},
-        {"Chọn Vũ Khí", "Select Weapon"},
-        {"Chọn Mục Tiêu", "Select Target"},
-        {"Cài Đặt", "Settings"},
-        {"Làm mới", "Refresh"},
+        {"Redz Hub by real_redz", "NEXUS by 7yvta"},
+        {"redz Hub by real_redz", "NEXUS by 7yvta"},
+        {"Redz Hub", "NEXUS"},
+        {"redz Hub", "NEXUS"},
+        {"redz hub", "NEXUS"},
+        {"REDZ HUB", "NEXUS"},
+        {"real_redz", "7yvta"},
+        {"real-redz", "7yvta"},
+        {"real redz", "7yvta"},
+        {"Real_Redz", "7yvta"},
+        {"Real-Redz", "7yvta"},
+        {"Real Redz", "7yvta"},
+        {"by real_redz", "by 7yvta"},
+        {"by real-redz", "by 7yvta"},
+        {"by real redz", "by 7yvta"},
+        {"Chá»n CÃ´ng Cá»¥", "Select Tool"},
+        {"Chá»n cÃ´ng cá»¥ báº¡n muá»‘n sá»­ dá»¥ng", "Select the tool you want to use"},
+        {"Chá»n cÃ´ng cá»¥ báº¡n muá»‘n sá»­ dá»¥ng.", "Select the tool you want to use."},
+        {"Chá»n VÅ© KhÃ­", "Select Weapon"},
+        {"Chá»n Má»¥c TiÃªu", "Select Target"},
+        {"CÃ i Äáº·t", "Settings"},
+        {"LÃ m má»›i", "Refresh"},
         {"Pilih", "Select"},
         {"Bahasa", "Language"},
         {"Misi", "Quest"},
@@ -168,85 +75,6 @@ local function translateSourceContent(source)
         patched = patched:gsub(pair[1], pair[2])
     end
     return patched
-end
-
-local function patchVisibleUi()
-    local function patchObjectText(object)
-        if not object then
-            return
-        end
-        if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
-            pcall(function()
-                local current = object.Text
-                local updated = translateText(current)
-                if updated ~= current then
-                    object.Text = updated
-                end
-            end)
-
-            pcall(function()
-                local placeholder = object.PlaceholderText
-                if type(placeholder) == "string" and placeholder ~= "" then
-                    local updated = translateText(placeholder)
-                    if updated ~= placeholder then
-                        object.PlaceholderText = updated
-                    end
-                end
-            end)
-        end
-    end
-
-    local function patchAllFrom(root)
-        if not root then
-            return
-        end
-        for _, descendant in ipairs(root:GetDescendants()) do
-            patchObjectText(descendant)
-        end
-        pcall(function()
-            if root:GetAttribute("YvtaDescendantHook") then
-                return
-            end
-            root:SetAttribute("YvtaDescendantHook", true)
-            root.DescendantAdded:Connect(function(newDescendant)
-                patchObjectText(newDescendant)
-            end)
-        end)
-    end
-
-    local roots = {}
-    pcall(function()
-        table.insert(roots, game:GetService("CoreGui"))
-    end)
-    pcall(function()
-        table.insert(roots, game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
-    end)
-    pcall(function()
-        if gethui then
-            table.insert(roots, gethui())
-        end
-    end)
-
-    for _, root in ipairs(roots) do
-        patchAllFrom(root)
-    end
-
-    pcall(function()
-        local function runner()
-            for i = 1, 12 do
-                for _, root in ipairs(roots) do
-                    patchAllFrom(root)
-                end
-                safeWait(1)
-            end
-        end
-
-        if task and type(task.spawn) == "function" then
-            task.spawn(runner)
-        else
-            spawn(runner)
-        end
-    end)
 end
 
 local function addCreatorTag()
@@ -335,13 +163,6 @@ for _, enemyName in ipairs(firstSeaTargets) do
     firstSeaLookup[enemyName] = true
 end
 
-local function setObservationStatus(text)
-    local button = observationFarm.ToggleButton
-    if button and button.Parent and observationFarm.Enabled then
-        button.Text = "AutoObservationFarm: ON"
-    end
-end
-
 local function getLocalCharacter()
     local player = game:GetService("Players").LocalPlayer
     if not player then
@@ -358,7 +179,7 @@ end
 
 local function pulseKenOn()
     local now = os.clock()
-    if now - observationFarm.LastKenPulse < 1.0 then
+    if now - observationFarm.LastKenPulse < 1.2 then
         return
     end
     observationFarm.LastKenPulse = now
@@ -416,7 +237,7 @@ local function findObservationEnemy(originPosition)
             end
             if allowed then
                 local distance = (root.Position - originPosition).Magnitude
-                if distance < bestDistance then
+                if distance <= 350 and distance < bestDistance then
                     bestDistance = distance
                     bestTarget = model
                 end
@@ -449,8 +270,8 @@ local function moveNearEnemy(characterRoot, enemyModel)
         return
     end
 
-    local currentDistance = (enemyRoot.Position - characterRoot.Position).Magnitude
-    if currentDistance <= 6 then
+    local distance = (enemyRoot.Position - characterRoot.Position).Magnitude
+    if distance <= 6 then
         return
     end
 
@@ -489,10 +310,10 @@ local function runObservationFarmLoop()
         while observationFarm.Enabled do
             local character, humanoid, root = getLocalCharacter()
             if not character or not humanoid or humanoid.Health <= 0 or not root then
-                setObservationStatus("Waiting for character")
-                safeWait(0.7)
+                safeWait(0.75)
             else
                 pulseKenOn()
+
                 local enemy = observationFarm.CurrentTarget
                 if not isObservationTargetValid(enemy, root.Position) then
                     enemy = nil
@@ -506,18 +327,17 @@ local function runObservationFarmLoop()
                 end
 
                 if enemy then
-                    setObservationStatus("Farming " .. enemy.Name)
                     moveNearEnemy(root, enemy)
                 else
                     observationFarm.CurrentTarget = nil
-                    setObservationStatus("Searching target")
                 end
+
                 safeWait(0.55)
             end
         end
+
         observationFarm.Running = false
         observationFarm.CurrentTarget = nil
-        setObservationStatus("Stopped")
     end
 
     if task and type(task.spawn) == "function" then
@@ -531,10 +351,7 @@ local function setObservationEnabled(value)
     observationFarm.Enabled = value == true
     updateObservationButtonVisual()
     if observationFarm.Enabled then
-        setObservationStatus("Starting")
         runObservationFarmLoop()
-    else
-        setObservationStatus("Stopped")
     end
 end
 
@@ -690,7 +507,7 @@ if not content then
     error("Loader failed: could not fetch miine.lua")
 end
 
-content = translateSourceContent(content)
+content = patchSourceContent(content)
 
 local chunk, compileErr = loadstring(content)
 if not chunk then
@@ -703,4 +520,3 @@ chunk()
 pcall(addCreatorTag)
 pcall(attachObservationButtonToMainPanel)
 pcall(watchAndAttachObservationButton)
-pcall(patchVisibleUi)
