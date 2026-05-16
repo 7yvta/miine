@@ -58,10 +58,10 @@ local function translateText(input)
         patched = patched:gsub("Real_Redz", "7yvta")
         patched = patched:gsub("Real%-Redz", "7yvta")
         patched = patched:gsub("Real Redz", "7yvta")
-        patched = patched:gsub("redz Hub", "miine")
-        patched = patched:gsub("Redz Hub", "miine")
-        patched = patched:gsub("redz hub", "miine")
-        patched = patched:gsub("REDZ HUB", "MIINE")
+        patched = patched:gsub("redz Hub", "NEXUS")
+        patched = patched:gsub("Redz Hub", "NEXUS")
+        patched = patched:gsub("redz hub", "NEXUS")
+        patched = patched:gsub("REDZ HUB", "NEXUS")
         patched = patched:gsub("by 7yvta", "by 7yvta")
         return patched
     end
@@ -101,7 +101,7 @@ local function translateText(input)
     end
 
     if normalized == "redz hub" or normalized == "redz hub by real redz" then
-        return "miine by 7yvta"
+        return "NEXUS by 7yvta"
     end
     if normalized:find("by real redz", 1, true) then
         return "by 7yvta"
